@@ -1187,10 +1187,46 @@ end
 local Tracked = {}
 
 local CharacterConnections = {}
+local DeathConnections = {}
+
+local function DisconnectCharacterConnections(
+    Player
+)
+
+    if CharacterConnections[Player] then
+
+        pcall(
+            function()
+                CharacterConnections[Player]:
+                    Disconnect()
+            end
+        )
+
+        CharacterConnections[Player] =
+            nil
+    end
+
+    if DeathConnections[Player] then
+
+        pcall(
+            function()
+                DeathConnections[Player]:
+                    Disconnect()
+            end
+        )
+
+        DeathConnections[Player] =
+            nil
+    end
+end
 
 local function RemovePlayer(
     Player
 )
+
+    DisconnectCharacterConnections(
+        Player
+    )
 
     local Data =
         Tracked[Player]
@@ -1226,9 +1262,17 @@ local function TrackCharacter(
         return
     end
 
+    -- Remove the previous character's ESP/chams first.
     RemovePlayer(
         Player
     )
+
+    if Destroyed
+        or not Character
+        or not Character.Parent then
+
+        return
+    end
 
     local Data = {
 
@@ -1256,6 +1300,36 @@ local function TrackCharacter(
                 )
         end
     end
+
+    -- Remove ESP/chams immediately when this character dies.
+    local Humanoid =
+        Character:FindFirstChildOfClass(
+            "Humanoid"
+        )
+
+    if Humanoid then
+
+        DeathConnections[Player] =
+            Connect(
+                Humanoid.Died,
+
+                function()
+
+                    local Current =
+                        Tracked[Player]
+
+                    -- Make sure an old character's death
+                    -- cannot remove a newer character's ESP.
+                    if Current
+                        and Current.Character == Character then
+
+                        RemovePlayer(
+                            Player
+                        )
+                    end
+                end
+            )
+    end
 end
 
 local function TrackPlayer(
@@ -1280,6 +1354,10 @@ local function TrackPlayer(
 
             function(Character)
 
+                if Destroyed then
+                    return
+                end
+
                 Character:WaitForChild(
                     "HumanoidRootPart",
                     10
@@ -1287,7 +1365,9 @@ local function TrackPlayer(
 
                 task.wait(0.1)
 
-                if not Destroyed then
+                if not Destroyed
+                    and Player.Parent == Players
+                    and Character.Parent then
 
                     TrackCharacter(
                         Player,
@@ -2074,20 +2154,6 @@ Connect(
     Players.PlayerRemoving,
 
     function(Player)
-
-        if CharacterConnections[Player] then
-
-            pcall(
-                function()
-
-                    CharacterConnections[Player]:
-                    Disconnect()
-                end
-            )
-
-            CharacterConnections[Player] =
-                nil
-        end
 
         RemovePlayer(
             Player
