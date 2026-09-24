@@ -595,18 +595,16 @@ local function IsBodyPart(Object)
         and BODY_PARTS[Object.Name] == true
 end
 
-for _, Name in ipairs({
-
-    "ViewportESP",
-    "ESPConfiguration",
-
-}) do
-
+do
     local Existing =
-        CoreGui:FindFirstChild(Name)
-
+        CoreGui:FindFirstChild("ESPConfiguration")
     if Existing then
         Existing:Destroy()
+    end
+    local OldFolder =
+        workspace:FindFirstChild("__InertChams")
+    if OldFolder then
+        OldFolder:Destroy()
     end
 end
 
@@ -636,177 +634,17 @@ local function NewText()
     return Text
 end
 
-local ChamGui =
-    Instance.new("ScreenGui")
+local ChamFolder = workspace:FindFirstChild("__InertChams")
+    or Instance.new("Folder")
+ChamFolder.Name = "__InertChams"
+ChamFolder.Parent = workspace
 
-ChamGui.Name =
-    "ViewportESP"
-
-ChamGui.IgnoreGuiInset = true
-
-ChamGui.ResetOnSpawn = false
-
-ChamGui.DisplayOrder = 999998
-
-ChamGui.ZIndexBehavior =
-    Enum.ZIndexBehavior.Global
-
-ChamGui.Parent =
-    CoreGui
-
-local function CreateViewport(
-    Name,
-    ZIndex
-)
-
-    local Viewport =
-        Instance.new(
-            "ViewportFrame"
-        )
-
-    Viewport.Name =
-        Name
-
-    Viewport.Size =
-        UDim2.fromScale(
-            1,
-            1
-        )
-
-    Viewport.BackgroundTransparency = 1
-
-    Viewport.BorderSizePixel = 0
-
-    Viewport.Ambient =
-        Color3.new(
-            1,
-            1,
-            1
-        )
-
-    Viewport.LightColor =
-        Color3.new(
-            1,
-            1,
-            1
-        )
-
-    Viewport.ZIndex =
-        ZIndex
-
-    Viewport.Parent =
-        ChamGui
-
-    local Camera =
-        Instance.new("Camera")
-
-    Camera.Parent =
-        Viewport
-
-    Viewport.CurrentCamera =
-        Camera
-
-    local World =
-        Instance.new(
-            "WorldModel"
-        )
-
-    World.Parent =
-        Viewport
-
-    return {
-
-        Viewport = Viewport,
-
-        Camera = Camera,
-
-        World = World,
-    }
-end
-
-local Glow3 =
-    CreateViewport(
-        "Glow3",
-        1
-    )
-
-local Glow2 =
-    CreateViewport(
-        "Glow2",
-        2
-    )
-
-local Glow1 =
-    CreateViewport(
-        "Glow1",
-        3
-    )
-
-local Main =
-    CreateViewport(
-        "Main",
-        4
-    )
-
-local function GetChamLayers()
-
-    return {
-
-        {
-            Data = Glow3,
-
-            Scale =
-                CONFIG.Chams.Glow.Scale3,
-
-            Transparency =
-                CONFIG.Chams.Glow.Enabled
-                and CONFIG.Chams.Glow.Transparency3
-                or 1,
-
-            Glow = true,
-        },
-
-        {
-            Data = Glow2,
-
-            Scale =
-                CONFIG.Chams.Glow.Scale2,
-
-            Transparency =
-                CONFIG.Chams.Glow.Enabled
-                and CONFIG.Chams.Glow.Transparency2
-                or 1,
-
-            Glow = true,
-        },
-
-        {
-            Data = Glow1,
-
-            Scale =
-                CONFIG.Chams.Glow.Scale1,
-
-            Transparency =
-                CONFIG.Chams.Glow.Enabled
-                and CONFIG.Chams.Glow.Transparency1
-                or 1,
-
-            Glow = true,
-        },
-
-        {
-            Data = Main,
-
-            Scale =
-                CONFIG.Chams.MainScale,
-
-            Transparency =
-                CONFIG.Chams.MainTransparency,
-
-            Glow = false,
-        },
-    }
-end
+local Layers = {
+    { Scale = CONFIG.Chams.Glow.Scale3, Glow = true },
+    { Scale = CONFIG.Chams.Glow.Scale2, Glow = true },
+    { Scale = CONFIG.Chams.Glow.Scale1, Glow = true },
+    { Scale = CONFIG.Chams.MainScale,   Glow = false },
+}
 
 local function GetChamGradientT(
     Character,
@@ -843,9 +681,7 @@ local function CreateCham(
 
     local Result = {}
 
-    for Index, Layer in ipairs(
-        GetChamLayers()
-    ) do
+    for Index, Layer in ipairs(Layers) do
 
         local Part =
             Instance.new("Part")
@@ -875,8 +711,10 @@ local function CreateCham(
         Part.CFrame =
             RealPart.CFrame
 
+        Part.LocalTransparencyModifier = 0
+
         Part.Parent =
-            Layer.Data.World
+            ChamFolder
 
         Result[Index] = {
             Part = Part,
@@ -1265,6 +1103,8 @@ local function RemovePlayer(
     Player
 )
 
+    -- Player is actually leaving, so remove both
+    -- the current character and the Player connections.
     RemoveCharacter(
         Player
     )
@@ -1283,6 +1123,8 @@ local function TrackCharacter(
         return
     end
 
+    -- Remove only the old character. Keep CharacterAdded
+    -- connected so ESP/chams return after respawn.
     RemoveCharacter(
         Player
     )
@@ -1321,6 +1163,8 @@ local function TrackCharacter(
         end
     end
 
+    -- Remove ESP/chams immediately when this character dies,
+    -- while keeping CharacterAdded alive for the next respawn.
     local Humanoid =
         Character:FindFirstChildOfClass(
             "Humanoid"
@@ -1337,6 +1181,8 @@ local function TrackCharacter(
                     local Current =
                         Tracked[Player]
 
+                    -- An old character must never remove
+                    -- ESP belonging to a newer character.
                     if Current
                         and Current.Character == Character then
 
@@ -2194,23 +2040,6 @@ Connect(
             return
         end
 
-        ChamGui.Enabled =
-            CONFIG.Chams.Enabled
-
-        local Layers =
-            GetChamLayers()
-
-        for _, Layer in ipairs(
-            Layers
-        ) do
-
-            Layer.Data.Camera.CFrame =
-                Camera.CFrame
-
-            Layer.Data.Camera.FieldOfView =
-                Camera.FieldOfView
-        end
-
         for Player, Data in pairs(
             Tracked
         ) do
@@ -2309,7 +2138,13 @@ Connect(
                                 )
 
                             Part.Transparency =
-                                Layer.Transparency
+                                CONFIG.Chams.Glow.Enabled
+                                and (
+                                    Index == 1 and CONFIG.Chams.Glow.Transparency3
+                                    or Index == 2 and CONFIG.Chams.Glow.Transparency2
+                                    or CONFIG.Chams.Glow.Transparency1
+                                )
+                                or 1
 
                         else
 
@@ -2320,7 +2155,9 @@ Connect(
                                 )
 
                             Part.Transparency =
-                                CONFIG.Chams.MainTransparency
+                                CONFIG.Chams.Enabled
+                                and CONFIG.Chams.MainTransparency
+                                or 1
                         end
                     end
                 end
@@ -2542,7 +2379,7 @@ ENV.__ESP_LIBRARY_CLEANUP =
 
         pcall(
             function()
-                ChamGui:Destroy()
+                ChamFolder:Destroy()
             end
         )
 
