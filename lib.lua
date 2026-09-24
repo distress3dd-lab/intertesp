@@ -1,5 +1,3 @@
-
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
@@ -882,6 +880,7 @@ local function CreateCham(
 
         Result[Index] = {
             Part = Part,
+            Adornee = RealPart,
         }
     end
 
@@ -1266,8 +1265,6 @@ local function RemovePlayer(
     Player
 )
 
-    -- Player is actually leaving, so remove both
-    -- the current character and the Player connections.
     RemoveCharacter(
         Player
     )
@@ -1286,8 +1283,6 @@ local function TrackCharacter(
         return
     end
 
-    -- Remove only the old character. Keep CharacterAdded
-    -- connected so ESP/chams return after respawn.
     RemoveCharacter(
         Player
     )
@@ -1326,8 +1321,6 @@ local function TrackCharacter(
         end
     end
 
-    -- Remove ESP/chams immediately when this character dies,
-    -- while keeping CharacterAdded alive for the next respawn.
     local Humanoid =
         Character:FindFirstChildOfClass(
             "Humanoid"
@@ -1344,8 +1337,6 @@ local function TrackCharacter(
                     local Current =
                         Tracked[Player]
 
-                    -- An old character must never remove
-                    -- ESP belonging to a newer character.
                     if Current
                         and Current.Character == Character then
 
@@ -2296,14 +2287,17 @@ Connect(
                         local Part =
                             Entry.Part
 
+                        local Adornee =
+                            Entry.Adornee
+
                         local Layer =
                             Layers[Index]
 
                         Part.CFrame =
-                            RealPart.CFrame
+                            Adornee.CFrame
 
                         Part.Size =
-                            RealPart.Size
+                            Adornee.Size
                             * Layer.Scale
 
                         if Layer.Glow then
