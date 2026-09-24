@@ -1,3 +1,5 @@
+
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local CoreGui = game:GetService("CoreGui")
@@ -703,12 +705,6 @@ local function CreateViewport(
     Camera.Parent =
         Viewport
 
-    local Bloom = Instance.new("BloomEffect")
-    Bloom.Intensity = 1.5
-    Bloom.Size = 24
-    Bloom.Threshold = 0.9
-    Bloom.Parent = Camera
-
     Viewport.CurrentCamera =
         Camera
 
@@ -886,7 +882,6 @@ local function CreateCham(
 
         Result[Index] = {
             Part = Part,
-            Adornee = RealPart,
         }
     end
 
@@ -2301,17 +2296,14 @@ Connect(
                         local Part =
                             Entry.Part
 
-                        local Adornee =
-                            Entry.Adornee
-
                         local Layer =
                             Layers[Index]
 
                         Part.CFrame =
-                            Adornee.CFrame
+                            RealPart.CFrame
 
                         Part.Size =
-                            Adornee.Size
+                            RealPart.Size
                             * Layer.Scale
 
                         if Layer.Glow then
