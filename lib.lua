@@ -1220,13 +1220,22 @@ local function DisconnectCharacterConnections(
     end
 end
 
-local function RemovePlayer(
+local function RemoveCharacter(
     Player
 )
 
-    DisconnectCharacterConnections(
-        Player
-    )
+    if DeathConnections[Player] then
+
+        pcall(
+            function()
+                DeathConnections[Player]:
+                    Disconnect()
+            end
+        )
+
+        DeathConnections[Player] =
+            nil
+    end
 
     local Data =
         Tracked[Player]
@@ -1253,6 +1262,21 @@ local function RemovePlayer(
     end
 end
 
+local function RemovePlayer(
+    Player
+)
+
+    -- Player is actually leaving, so remove both
+    -- the current character and the Player connections.
+    RemoveCharacter(
+        Player
+    )
+
+    DisconnectCharacterConnections(
+        Player
+    )
+end
+
 local function TrackCharacter(
     Player,
     Character
@@ -1262,8 +1286,9 @@ local function TrackCharacter(
         return
     end
 
-    -- Remove the previous character's ESP/chams first.
-    RemovePlayer(
+    -- Remove only the old character. Keep CharacterAdded
+    -- connected so ESP/chams return after respawn.
+    RemoveCharacter(
         Player
     )
 
@@ -1301,7 +1326,8 @@ local function TrackCharacter(
         end
     end
 
-    -- Remove ESP/chams immediately when this character dies.
+    -- Remove ESP/chams immediately when this character dies,
+    -- while keeping CharacterAdded alive for the next respawn.
     local Humanoid =
         Character:FindFirstChildOfClass(
             "Humanoid"
@@ -1318,12 +1344,12 @@ local function TrackCharacter(
                     local Current =
                         Tracked[Player]
 
-                    -- Make sure an old character's death
-                    -- cannot remove a newer character's ESP.
+                    -- An old character must never remove
+                    -- ESP belonging to a newer character.
                     if Current
                         and Current.Character == Character then
 
-                        RemovePlayer(
+                        RemoveCharacter(
                             Player
                         )
                     end
@@ -2207,8 +2233,8 @@ Connect(
             if not Character
                 or not Character.Parent then
 
-                HideESP(
-                    ESP
+                RemoveCharacter(
+                    Player
                 )
 
                 continue
