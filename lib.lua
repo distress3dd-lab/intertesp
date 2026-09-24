@@ -595,16 +595,18 @@ local function IsBodyPart(Object)
         and BODY_PARTS[Object.Name] == true
 end
 
-do
+for _, Name in ipairs({
+
+    "ViewportESP",
+    "ESPConfiguration",
+
+}) do
+
     local Existing =
-        CoreGui:FindFirstChild("ESPConfiguration")
+        CoreGui:FindFirstChild(Name)
+
     if Existing then
         Existing:Destroy()
-    end
-    local OldFolder =
-        workspace:FindFirstChild("__InertChams")
-    if OldFolder then
-        OldFolder:Destroy()
     end
 end
 
@@ -634,17 +636,183 @@ local function NewText()
     return Text
 end
 
-local ChamFolder = workspace:FindFirstChild("__InertChams")
-    or Instance.new("Folder")
-ChamFolder.Name = "__InertChams"
-ChamFolder.Parent = workspace
+local ChamGui =
+    Instance.new("ScreenGui")
 
-local Layers = {
-    { Scale = CONFIG.Chams.Glow.Scale3, Glow = true },
-    { Scale = CONFIG.Chams.Glow.Scale2, Glow = true },
-    { Scale = CONFIG.Chams.Glow.Scale1, Glow = true },
-    { Scale = CONFIG.Chams.MainScale,   Glow = false },
-}
+ChamGui.Name =
+    "ViewportESP"
+
+ChamGui.IgnoreGuiInset = true
+
+ChamGui.ResetOnSpawn = false
+
+ChamGui.DisplayOrder = 999998
+
+ChamGui.ZIndexBehavior =
+    Enum.ZIndexBehavior.Global
+
+ChamGui.Parent =
+    CoreGui
+
+local function CreateViewport(
+    Name,
+    ZIndex
+)
+
+    local Viewport =
+        Instance.new(
+            "ViewportFrame"
+        )
+
+    Viewport.Name =
+        Name
+
+    Viewport.Size =
+        UDim2.fromScale(
+            1,
+            1
+        )
+
+    Viewport.BackgroundTransparency = 1
+
+    Viewport.BorderSizePixel = 0
+
+    Viewport.Ambient =
+        Color3.new(
+            1,
+            1,
+            1
+        )
+
+    Viewport.LightColor =
+        Color3.new(
+            1,
+            1,
+            1
+        )
+
+    Viewport.ZIndex =
+        ZIndex
+
+    Viewport.Parent =
+        ChamGui
+
+    local Camera =
+        Instance.new("Camera")
+
+    Camera.Parent =
+        Viewport
+
+    local Bloom = Instance.new("BloomEffect")
+    Bloom.Intensity = 1.5
+    Bloom.Size = 24
+    Bloom.Threshold = 0.9
+    Bloom.Parent = Camera
+
+    Viewport.CurrentCamera =
+        Camera
+
+    local World =
+        Instance.new(
+            "WorldModel"
+        )
+
+    World.Parent =
+        Viewport
+
+    return {
+
+        Viewport = Viewport,
+
+        Camera = Camera,
+
+        World = World,
+    }
+end
+
+local Glow3 =
+    CreateViewport(
+        "Glow3",
+        1
+    )
+
+local Glow2 =
+    CreateViewport(
+        "Glow2",
+        2
+    )
+
+local Glow1 =
+    CreateViewport(
+        "Glow1",
+        3
+    )
+
+local Main =
+    CreateViewport(
+        "Main",
+        4
+    )
+
+local function GetChamLayers()
+
+    return {
+
+        {
+            Data = Glow3,
+
+            Scale =
+                CONFIG.Chams.Glow.Scale3,
+
+            Transparency =
+                CONFIG.Chams.Glow.Enabled
+                and CONFIG.Chams.Glow.Transparency3
+                or 1,
+
+            Glow = true,
+        },
+
+        {
+            Data = Glow2,
+
+            Scale =
+                CONFIG.Chams.Glow.Scale2,
+
+            Transparency =
+                CONFIG.Chams.Glow.Enabled
+                and CONFIG.Chams.Glow.Transparency2
+                or 1,
+
+            Glow = true,
+        },
+
+        {
+            Data = Glow1,
+
+            Scale =
+                CONFIG.Chams.Glow.Scale1,
+
+            Transparency =
+                CONFIG.Chams.Glow.Enabled
+                and CONFIG.Chams.Glow.Transparency1
+                or 1,
+
+            Glow = true,
+        },
+
+        {
+            Data = Main,
+
+            Scale =
+                CONFIG.Chams.MainScale,
+
+            Transparency =
+                CONFIG.Chams.MainTransparency,
+
+            Glow = false,
+        },
+    }
+end
 
 local function GetChamGradientT(
     Character,
@@ -681,7 +849,9 @@ local function CreateCham(
 
     local Result = {}
 
-    for Index, Layer in ipairs(Layers) do
+    for Index, Layer in ipairs(
+        GetChamLayers()
+    ) do
 
         local Part =
             Instance.new("Part")
@@ -711,10 +881,8 @@ local function CreateCham(
         Part.CFrame =
             RealPart.CFrame
 
-        Part.LocalTransparencyModifier = 0
-
         Part.Parent =
-            ChamFolder
+            Layer.Data.World
 
         Result[Index] = {
             Part = Part,
@@ -2040,6 +2208,23 @@ Connect(
             return
         end
 
+        ChamGui.Enabled =
+            CONFIG.Chams.Enabled
+
+        local Layers =
+            GetChamLayers()
+
+        for _, Layer in ipairs(
+            Layers
+        ) do
+
+            Layer.Data.Camera.CFrame =
+                Camera.CFrame
+
+            Layer.Data.Camera.FieldOfView =
+                Camera.FieldOfView
+        end
+
         for Player, Data in pairs(
             Tracked
         ) do
@@ -2138,13 +2323,7 @@ Connect(
                                 )
 
                             Part.Transparency =
-                                CONFIG.Chams.Glow.Enabled
-                                and (
-                                    Index == 1 and CONFIG.Chams.Glow.Transparency3
-                                    or Index == 2 and CONFIG.Chams.Glow.Transparency2
-                                    or CONFIG.Chams.Glow.Transparency1
-                                )
-                                or 1
+                                Layer.Transparency
 
                         else
 
@@ -2155,9 +2334,7 @@ Connect(
                                 )
 
                             Part.Transparency =
-                                CONFIG.Chams.Enabled
-                                and CONFIG.Chams.MainTransparency
-                                or 1
+                                CONFIG.Chams.MainTransparency
                         end
                     end
                 end
@@ -2379,7 +2556,7 @@ ENV.__ESP_LIBRARY_CLEANUP =
 
         pcall(
             function()
-                ChamFolder:Destroy()
+                ChamGui:Destroy()
             end
         )
 
