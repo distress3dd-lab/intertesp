@@ -115,6 +115,13 @@ local CONFIG = {
         },
     },
 
+    DistanceLimit = {
+
+        Enabled = false,
+
+        MaxDistance = 500,
+    },
+
     ESP = {
 
         Enabled = true,
@@ -1404,6 +1411,34 @@ local function TrackPlayer(
         )
 end
 
+local function IsWithinDistance(Character)
+
+    local Setting = CONFIG.DistanceLimit
+
+    if not Setting.Enabled then
+        return true
+    end
+
+    local LocalCharacter = LocalPlayer.Character
+    local LocalRoot = LocalCharacter
+        and LocalCharacter:FindFirstChild("HumanoidRootPart")
+
+    local TargetRoot = Character
+        and Character:FindFirstChild("HumanoidRootPart")
+
+    if not LocalRoot or not TargetRoot then
+        return false
+    end
+
+    local MaxDistance = tonumber(Setting.MaxDistance) or 0
+
+    if MaxDistance <= 0 then
+        return false
+    end
+
+    return (TargetRoot.Position - LocalRoot.Position).Magnitude <= MaxDistance
+end
+
 local function GetScreenBounds(
     Character,
     Camera
@@ -2247,6 +2282,21 @@ Connect(
                     Player,
                     Character
                 )
+
+                continue
+            end
+
+            if not IsWithinDistance(Character) then
+
+                HideESP(ESP)
+
+                for _, Cham in pairs(Data.Parts) do
+                    for _, Entry in ipairs(Cham) do
+                        if Entry.Part then
+                            Entry.Part.Transparency = 1
+                        end
+                    end
+                end
 
                 continue
             end
