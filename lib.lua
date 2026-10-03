@@ -17,6 +17,8 @@ end
 local Connections = {}
 local Drawings = {}
 local Destroyed = false
+local ESPActive = false
+local TrackingInitialized = false
 
 local function Connect(Signal, Callback)
     local Connection =
@@ -43,7 +45,7 @@ local CONFIG = {
 
     Chams = {
 
-        Enabled = true,
+        Enabled = false,
 
         Color = {
 
@@ -77,7 +79,7 @@ local CONFIG = {
 
         Glow = {
 
-            Enabled = true,
+            Enabled = false,
 
             Color = {
 
@@ -124,17 +126,17 @@ local CONFIG = {
 
     ESP = {
 
-        Enabled = true,
+        Enabled = false,
 
         Box = {
 
             Enabled = true,
 
-            Type = "Corner",
+            Type = "Full",
 
             Thickness = 1.5,
 
-            GradientSegments = 14,
+            GradientSegments = 4,
 
             CornerWidth = 0.28,
             CornerHeight = 0.22,
@@ -238,7 +240,7 @@ local CONFIG = {
 
         Visibility = {
 
-            Enabled = true,
+            Enabled = false,
 
             Size = 12,
 
@@ -382,7 +384,7 @@ local CONFIG = {
 
         Holding = {
 
-            Enabled = true,
+            Enabled = false,
 
             Size = 12,
 
@@ -438,13 +440,13 @@ local CONFIG = {
 
         Health = {
 
-            Enabled = true,
+            Enabled = false,
 
             Width = 2,
 
             Offset = 6,
 
-            Segments = 32,
+            Segments = 4,
 
             Color = {
 
@@ -645,173 +647,113 @@ local function NewText()
     return Text
 end
 
-local ChamGui =
-    Instance.new("ScreenGui")
+local ChamGui = nil
+local Glow3 = nil
+local Glow2 = nil
+local Glow1 = nil
+local Main = nil
 
-ChamGui.Name =
-    "ViewportESP"
+local function CreateChamGui()
+    if ChamGui and ChamGui.Parent then
+        return
+    end
 
-ChamGui.IgnoreGuiInset = true
+    ChamGui = Instance.new("ScreenGui")
+    ChamGui.Name = "ViewportESP"
+    ChamGui.IgnoreGuiInset = true
+    ChamGui.ResetOnSpawn = false
+    ChamGui.DisplayOrder = 999998
+    ChamGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+    ChamGui.Parent = CoreGui
+end
 
-ChamGui.ResetOnSpawn = false
+local function CreateViewport(Name, ZIndex)
+    CreateChamGui()
 
-ChamGui.DisplayOrder = 999998
-
-ChamGui.ZIndexBehavior =
-    Enum.ZIndexBehavior.Global
-
-ChamGui.Parent =
-    CoreGui
-
-local function CreateViewport(
-    Name,
-    ZIndex
-)
-
-    local Viewport =
-        Instance.new(
-            "ViewportFrame"
-        )
-
-    Viewport.Name =
-        Name
-
-    Viewport.Size =
-        UDim2.fromScale(
-            1,
-            1
-        )
-
+    local Viewport = Instance.new("ViewportFrame")
+    Viewport.Name = Name
+    Viewport.Size = UDim2.fromScale(1, 1)
     Viewport.BackgroundTransparency = 1
-
     Viewport.BorderSizePixel = 0
+    Viewport.Ambient = Color3.new(1, 1, 1)
+    Viewport.LightColor = Color3.new(1, 1, 1)
+    Viewport.ZIndex = ZIndex
+    Viewport.Parent = ChamGui
 
-    Viewport.Ambient =
-        Color3.new(
-            1,
-            1,
-            1
-        )
+    local Camera = Instance.new("Camera")
+    Camera.Parent = Viewport
+    Viewport.CurrentCamera = Camera
 
-    Viewport.LightColor =
-        Color3.new(
-            1,
-            1,
-            1
-        )
-
-    Viewport.ZIndex =
-        ZIndex
-
-    Viewport.Parent =
-        ChamGui
-
-    local Camera =
-        Instance.new("Camera")
-
-    Camera.Parent =
-        Viewport
-
-    Viewport.CurrentCamera =
-        Camera
-
-    local World =
-        Instance.new(
-            "WorldModel"
-        )
-
-    World.Parent =
-        Viewport
+    local World = Instance.new("WorldModel")
+    World.Parent = Viewport
 
     return {
-
         Viewport = Viewport,
-
         Camera = Camera,
-
         World = World,
     }
 end
 
-local Glow3 =
-    CreateViewport(
-        "Glow3",
-        1
-    )
+local function EnsureChamLayers()
+    if not Main then
+        Main = CreateViewport("Main", 4)
+    end
 
-local Glow2 =
-    CreateViewport(
-        "Glow2",
-        2
-    )
+    if CONFIG.Chams.Glow.Enabled then
+        if not Glow1 then Glow1 = CreateViewport("Glow1", 3) end
+        if not Glow2 then Glow2 = CreateViewport("Glow2", 2) end
+        if not Glow3 then Glow3 = CreateViewport("Glow3", 1) end
+    end
+end
 
-local Glow1 =
-    CreateViewport(
-        "Glow1",
-        3
-    )
-
-local Main =
-    CreateViewport(
-        "Main",
-        4
-    )
+local function DestroyChamLayers()
+    if ChamGui then
+        pcall(function() ChamGui:Destroy() end)
+    end
+    ChamGui = nil
+    Glow3 = nil
+    Glow2 = nil
+    Glow1 = nil
+    Main = nil
+end
 
 local function GetChamLayers()
+    EnsureChamLayers()
+
+    if not CONFIG.Chams.Glow.Enabled then
+        return {
+            {
+                Data = Main,
+                Scale = CONFIG.Chams.MainScale,
+                Transparency = CONFIG.Chams.MainTransparency,
+                Glow = false,
+            },
+        }
+    end
 
     return {
-
         {
             Data = Glow3,
-
-            Scale =
-                CONFIG.Chams.Glow.Scale3,
-
-            Transparency =
-                CONFIG.Chams.Glow.Enabled
-                and CONFIG.Chams.Glow.Transparency3
-                or 1,
-
+            Scale = CONFIG.Chams.Glow.Scale3,
+            Transparency = CONFIG.Chams.Glow.Transparency3,
             Glow = true,
         },
-
         {
             Data = Glow2,
-
-            Scale =
-                CONFIG.Chams.Glow.Scale2,
-
-            Transparency =
-                CONFIG.Chams.Glow.Enabled
-                and CONFIG.Chams.Glow.Transparency2
-                or 1,
-
+            Scale = CONFIG.Chams.Glow.Scale2,
+            Transparency = CONFIG.Chams.Glow.Transparency2,
             Glow = true,
         },
-
         {
             Data = Glow1,
-
-            Scale =
-                CONFIG.Chams.Glow.Scale1,
-
-            Transparency =
-                CONFIG.Chams.Glow.Enabled
-                and CONFIG.Chams.Glow.Transparency1
-                or 1,
-
+            Scale = CONFIG.Chams.Glow.Scale1,
+            Transparency = CONFIG.Chams.Glow.Transparency1,
             Glow = true,
         },
-
         {
             Data = Main,
-
-            Scale =
-                CONFIG.Chams.MainScale,
-
-            Transparency =
-                CONFIG.Chams.MainTransparency,
-
+            Scale = CONFIG.Chams.MainScale,
+            Transparency = CONFIG.Chams.MainTransparency,
             Glow = false,
         },
     }
@@ -1313,25 +1255,17 @@ local function TrackCharacter(
 
         Parts = {},
 
-        ESP =
-            CreateESP(),
+        ESP = nil,
+
+        NextPartScan = 0,
     }
 
     Tracked[Player] =
         Data
 
-    for _, Object in ipairs(
-        Character:GetChildren()
-    ) do
-
-        if IsBodyPart(Object) then
-
-            Data.Parts[Object] =
-                CreateCham(
-                    Object
-                )
-        end
-    end
+    -- Chams and Drawing objects are allocated lazily by the renderer.
+    -- This avoids a large synchronous allocation burst when the library loads.
+    Data.NextPartScan = 0
 
     -- Remove ESP/chams immediately when this character dies,
     -- while keeping CharacterAdded alive for the next respawn.
@@ -1443,36 +1377,63 @@ local function GetScreenBounds(
     Character,
     Camera
 )
+    if not Character or not Character.Parent then
+        return nil
+    end
+
+    -- Project the eight corners of the model bounding box instead of every
+    -- corner of every limb. This reduces a typical R15 character from roughly
+    -- 120+ WorldToViewportPoint calls to 8.
+    local CF, Size = Character:GetBoundingBox()
+    local Half = Size * 0.5
+
     local MinX, MinY = math.huge, math.huge
     local MaxX, MaxY = -math.huge, -math.huge
     local Found = false
 
-    for _, Part in ipairs(Character:GetChildren()) do
-        if IsBodyPart(Part) then
-            local Half = Part.Size * 0.5
-            for X = -1, 1, 2 do
-                for Y = -1, 1, 2 do
-                    for Z = -1, 1, 2 do
-                        local WorldCorner = Part.CFrame:PointToWorldSpace(Vector3.new(Half.X * X, Half.Y * Y, Half.Z * Z))
-                        local Point = Camera:WorldToViewportPoint(WorldCorner)
-                        if Point.Z > 0 then
-                            Found = true
-                            MinX = math.min(MinX, Point.X)
-                            MinY = math.min(MinY, Point.Y)
-                            MaxX = math.max(MaxX, Point.X)
-                            MaxY = math.max(MaxY, Point.Y)
-                        end
-                    end
+    for X = -1, 1, 2 do
+        for Y = -1, 1, 2 do
+            for Z = -1, 1, 2 do
+                local WorldCorner = CF:PointToWorldSpace(
+                    Vector3.new(Half.X * X, Half.Y * Y, Half.Z * Z)
+                )
+                local Point = Camera:WorldToViewportPoint(WorldCorner)
+                if Point.Z > 0 then
+                    Found = true
+                    MinX = math.min(MinX, Point.X)
+                    MinY = math.min(MinY, Point.Y)
+                    MaxX = math.max(MaxX, Point.X)
+                    MaxY = math.max(MaxY, Point.Y)
                 end
             end
         end
     end
 
-    if not Found then return nil end
-    local Width, Height = MaxX - MinX, MaxY - MinY
-    if Width <= 0 or Height <= 0 then return nil end
-    return {Left=MinX, Right=MaxX, Top=MinY, Bottom=MaxY, Width=Width, Height=Height, CenterX=(MinX+MaxX)*0.5, CenterY=(MinY+MaxY)*0.5}
+    if not Found then
+        return nil
+    end
+
+    local Width = MaxX - MinX
+    local Height = MaxY - MinY
+    if Width <= 0 or Height <= 0 then
+        return nil
+    end
+
+    return {
+        Left = MinX,
+        Right = MaxX,
+        Top = MinY,
+        Bottom = MaxY,
+        Width = Width,
+        Height = Height,
+        CenterX = (MinX + MaxX) * 0.5,
+        CenterY = (MinY + MaxY) * 0.5,
+    }
 end
+
+local VisibilityParams = RaycastParams.new()
+VisibilityParams.FilterType = Enum.RaycastFilterType.Exclude
+VisibilityParams.IgnoreWater = true
 
 local function IsVisible(
     Character,
@@ -1492,11 +1453,7 @@ local function IsVisible(
         return false
     end
 
-    local Parameters =
-        RaycastParams.new()
-
-    Parameters.FilterType =
-        Enum.RaycastFilterType.Exclude
+    local Parameters = VisibilityParams
 
     local Ignore = {
         Character,
@@ -2197,18 +2154,37 @@ local function DrawHolding(
     )
 end
 
-for _, Player in ipairs(
-    Players:GetPlayers()
-) do
+local function EnsureTracking()
+    if Destroyed then
+        return
+    end
 
-    TrackPlayer(
-        Player
-    )
+    if not ESPActive and not CONFIG.Chams.Enabled then
+        return
+    end
+
+    if TrackingInitialized then
+        return
+    end
+
+    TrackingInitialized = true
+
+    -- Only connect players that are not already tracked. This matters after
+    -- both features are disabled and a new player joins while tracking is off.
+    for _, Player in ipairs(Players:GetPlayers()) do
+        if Player ~= LocalPlayer and not CharacterConnections[Player] then
+            TrackPlayer(Player)
+        end
+    end
 end
 
 Connect(
     Players.PlayerAdded,
-    TrackPlayer
+    function(Player)
+        if ESPActive or CONFIG.Chams.Enabled then
+            TrackPlayer(Player)
+        end
+    end
 )
 
 Connect(
@@ -2222,306 +2198,202 @@ Connect(
     end
 )
 
+local UPDATE_INTERVAL = 1 / 30
+local lastUpdate = 0
+
 Connect(
     RunService.RenderStepped,
 
     function()
-
         if Destroyed then
             return
         end
 
-        local Camera =
-            workspace.CurrentCamera
+        local Now = os.clock()
+        if Now - lastUpdate < UPDATE_INTERVAL then
+            return
+        end
+        lastUpdate = Now
 
+        local Camera = workspace.CurrentCamera
         if not Camera then
             return
         end
 
-        ChamGui.Enabled =
-            CONFIG.Chams.Enabled
+        local ChamsEnabled = CONFIG.Chams.Enabled == true
+        local ESPEnabled = ESPActive == true
 
-        local Layers =
-            GetChamLayers()
-
-        for _, Layer in ipairs(
-            Layers
-        ) do
-
-            Layer.Data.Camera.CFrame =
-                Camera.CFrame
-
-            Layer.Data.Camera.FieldOfView =
-                Camera.FieldOfView
+        if ESPEnabled or ChamsEnabled then
+            EnsureTracking()
         end
 
-        for Player, Data in pairs(
-            Tracked
-        ) do
+        if not ChamsEnabled and not ESPEnabled then
+            if ChamGui then
+                ChamGui.Enabled = false
+            end
+            return
+        end
 
-            local Character =
-                Player.Character
+        local Layers = nil
+        if ChamsEnabled then
+            EnsureChamLayers()
+            Layers = GetChamLayers()
+            if ChamGui then
+                ChamGui.Enabled = true
+                for _, Layer in ipairs(Layers) do
+                    if Layer.Data and Layer.Data.Camera then
+                        Layer.Data.Camera.CFrame = Camera.CFrame
+                        Layer.Data.Camera.FieldOfView = Camera.FieldOfView
+                    end
+                end
+            end
+        elseif ChamGui then
+            ChamGui.Enabled = false
+        end
 
-            local ESP =
-                Data.ESP
+        -- Spread object allocation over several 30 Hz updates instead of
+        -- constructing every player's ESP/chams in one scheduler slice.
+        local espCreateBudget = 3
+        local chamCreateBudget = 8
 
-            if not Character
-                or not Character.Parent then
+        for Player, Data in pairs(Tracked) do
+            local Character = Player.Character
 
-                RemoveCharacter(
-                    Player
-                )
-
+            if not Character or not Character.Parent then
+                RemoveCharacter(Player)
                 continue
             end
 
-            if Character
-                ~= Data.Character then
-
-                TrackCharacter(
-                    Player,
-                    Character
-                )
-
+            if Character ~= Data.Character then
+                TrackCharacter(Player, Character)
                 continue
             end
 
             if not IsWithinDistance(Character) then
+                if Data.ESP then
+                    HideESP(Data.ESP)
+                end
 
-                HideESP(ESP)
+                if ChamsEnabled then
+                    for _, Cham in pairs(Data.Parts) do
+                        for _, Entry in ipairs(Cham) do
+                            if Entry.Part then
+                                Entry.Part.Transparency = 1
+                            end
+                        end
+                    end
+                end
+                continue
+            end
 
-                for _, Cham in pairs(Data.Parts) do
-                    for _, Entry in ipairs(Cham) do
-                        if Entry.Part then
-                            Entry.Part.Transparency = 1
+            if ESPEnabled and not Data.ESP then
+                if espCreateBudget > 0 then
+                    Data.ESP = CreateESP()
+                    espCreateBudget -= 1
+                else
+                    continue
+                end
+            elseif not ESPEnabled and Data.ESP then
+                HideESP(Data.ESP)
+            end
+
+            if ChamsEnabled then
+                if Now >= (Data.NextPartScan or 0) then
+                    Data.NextPartScan = Now + 0.5
+                    for _, Object in ipairs(Character:GetChildren()) do
+                        if IsBodyPart(Object) and not Data.Parts[Object] then
+                            if chamCreateBudget <= 0 then
+                                break
+                            end
+                            Data.Parts[Object] = CreateCham(Object)
+                            chamCreateBudget -= 1
                         end
                     end
                 end
 
-                continue
-            end
-
-            for _, Object in ipairs(
-                Character:GetChildren()
-            ) do
-
-                if IsBodyPart(Object)
-                    and not Data.Parts[Object] then
-
-                    Data.Parts[Object] =
-                        CreateCham(
-                            Object
-                        )
-                end
-            end
-
-            if CONFIG.Chams.Enabled then
-
-                for RealPart, Cham in pairs(
-                    Data.Parts
-                ) do
-
+                for RealPart, Cham in pairs(Data.Parts) do
                     if not RealPart.Parent then
-
-                        DestroyCham(
-                            Cham
-                        )
-
-                        Data.Parts[RealPart] =
-                            nil
-
+                        DestroyCham(Cham)
+                        Data.Parts[RealPart] = nil
                         continue
                     end
 
-                    local GradientT =
-                        GetChamGradientT(
-                            Character,
-                            RealPart
-                        )
+                    if Layers and #Cham ~= #Layers and chamCreateBudget > 0 then
+                        DestroyCham(Cham)
+                        Data.Parts[RealPart] = CreateCham(RealPart)
+                        Cham = Data.Parts[RealPart]
+                        chamCreateBudget -= 1
+                    end
 
-                    for Index, Entry in ipairs(
-                        Cham
-                    ) do
+                    if Layers and #Cham == #Layers then
+                        local GradientT = GetChamGradientT(Character, RealPart)
+                        for Index, Entry in ipairs(Cham) do
+                            local Part = Entry.Part
+                            local Layer = Layers[Index]
+                            if Part and Layer then
+                                Part.CFrame = RealPart.CFrame
+                                Part.Size = RealPart.Size * Layer.Scale
 
-                        local Part =
-                            Entry.Part
-
-                        local Layer =
-                            Layers[Index]
-
-                        Part.CFrame =
-                            RealPart.CFrame
-
-                        Part.Size =
-                            RealPart.Size
-                            * Layer.Scale
-
-                        if Layer.Glow then
-
-                            Part.Color =
-                                ResolveColor(
-                                    CONFIG.Chams.Glow.Color,
-                                    GradientT
-                                )
-
-                            Part.Transparency =
-                                Layer.Transparency
-
-                        else
-
-                            Part.Color =
-                                ResolveColor(
-                                    CONFIG.Chams.Color,
-                                    GradientT
-                                )
-
-                            Part.Transparency =
-                                CONFIG.Chams.MainTransparency
+                                if Layer.Glow then
+                                    Part.Color = ResolveColor(CONFIG.Chams.Glow.Color, GradientT)
+                                    Part.Transparency = Layer.Transparency
+                                else
+                                    Part.Color = ResolveColor(CONFIG.Chams.Color, GradientT)
+                                    Part.Transparency = CONFIG.Chams.MainTransparency
+                                end
+                            end
                         end
                     end
                 end
             end
 
-            if not CONFIG.ESP.Enabled then
-
-                HideESP(
-                    ESP
-                )
-
+            if not ESPEnabled or not Data.ESP then
                 continue
             end
 
-            local Bounds =
-                GetScreenBounds(
-                    Character,
-                    Camera
-                )
-
-            if not Bounds
-                or Bounds.Width <= 0
-                or Bounds.Height <= 0 then
-
-                HideESP(
-                    ESP
-                )
-
+            local ESP = Data.ESP
+            local Bounds = GetScreenBounds(Character, Camera)
+            if not Bounds then
+                HideESP(ESP)
                 continue
             end
 
-            HideBoxes(
-                ESP
-            )
-
+            HideBoxes(ESP)
             if CONFIG.ESP.Box.Enabled then
-
-                if CONFIG.ESP.Box.Type
-                    == "Full" then
-
-                    DrawFullBox(
-                        ESP,
-                        Bounds
-                    )
-
+                if CONFIG.ESP.Box.Type == "Full" then
+                    DrawFullBox(ESP, Bounds)
                 else
-
-                    DrawCornerBox(
-                        ESP,
-                        Bounds
-                    )
+                    DrawCornerBox(ESP, Bounds)
                 end
             end
 
             if CONFIG.ESP.Name.Enabled then
-
-                ConfigureText(
-
-                    ESP.Name,
-
-                    Player.DisplayName,
-
-                    CONFIG.ESP.Name.Size,
-
-                    CONFIG.ESP.Name.Color,
-
-                    CONFIG.ESP.Name.Outline,
-
-                    Bounds
-                )
-
-                ApplyTextPlacement(
-                    ESP.Name,
-                    Bounds,
-                    CONFIG.ESP.Name.Placement
-                )
-
+                ConfigureText(ESP.Name, Player.DisplayName, CONFIG.ESP.Name.Size, CONFIG.ESP.Name.Color, CONFIG.ESP.Name.Outline, Bounds)
+                ApplyTextPlacement(ESP.Name, Bounds, CONFIG.ESP.Name.Placement)
             else
-
-                ESP.Name.Visible =
-                    false
+                ESP.Name.Visible = false
             end
 
             if CONFIG.ESP.Visibility.Enabled then
-
-                local Visible =
-                    IsVisible(
-                        Character,
-                        Camera
-                    )
-
+                local Visible = IsVisible(Character, Camera)
                 ConfigureText(
-
                     ESP.Visibility,
-
-                    Visible
-                    and CONFIG.ESP.Visibility.VisibleText
-                    or CONFIG.ESP.Visibility.HiddenText,
-
+                    Visible and CONFIG.ESP.Visibility.VisibleText or CONFIG.ESP.Visibility.HiddenText,
                     CONFIG.ESP.Visibility.Size,
-
-                    Visible
-                    and CONFIG.ESP.Visibility.VisibleColor
-                    or CONFIG.ESP.Visibility.HiddenColor,
-
+                    Visible and CONFIG.ESP.Visibility.VisibleColor or CONFIG.ESP.Visibility.HiddenColor,
                     CONFIG.ESP.Visibility.Outline,
-
                     Bounds
                 )
-
-                ApplyTextPlacement(
-                    ESP.Visibility,
-                    Bounds,
-                    CONFIG.ESP.Visibility.Placement
-                )
-
+                ApplyTextPlacement(ESP.Visibility, Bounds, CONFIG.ESP.Visibility.Placement)
             else
-
-                ESP.Visibility.Visible =
-                    false
+                ESP.Visibility.Visible = false
             end
 
-            DrawDistance(
-                ESP,
-                Character,
-                Bounds
-            )
+            DrawDistance(ESP, Character, Bounds)
+            DrawHolding(ESP, Character, Bounds)
 
-            DrawHolding(
-                ESP,
-                Character,
-                Bounds
-            )
-
-            local Humanoid =
-                Character:
-                FindFirstChildOfClass(
-                    "Humanoid"
-                )
-
-            DrawHealth(
-                ESP,
-                Bounds,
-                Humanoid
-            )
+            local Humanoid = Character:FindFirstChildOfClass("Humanoid")
+            DrawHealth(ESP, Bounds, Humanoid)
         end
     end
 )
@@ -2534,6 +2406,8 @@ ENV.__ESP_LIBRARY_CLEANUP =
         end
 
         Destroyed = true
+        ESPActive = false
+        TrackingInitialized = false
 
         for _, Connection in ipairs(
             Connections
@@ -2596,24 +2470,56 @@ ENV.__ESP_LIBRARY_CLEANUP =
             Drawings
         )
 
-        pcall(
-            function()
-                ChamGui:Destroy()
-            end
-        )
+        DestroyChamLayers()
 
     end
 
 local Library = {}
 Library.Config = CONFIG
-Library.Version = "1.0.0"
+Library.Version = "1.2.1-performance"
 
 function Library:SetEnabled(Value)
-    CONFIG.ESP.Enabled = Value == true
+    ESPActive = Value == true
+    CONFIG.ESP.Enabled = ESPActive
+
+    if ESPActive then
+        EnsureTracking()
+        return
+    end
+
+    for _, Data in pairs(Tracked) do
+        if Data.ESP then
+            HideESP(Data.ESP)
+        end
+    end
+
+    if not CONFIG.Chams.Enabled then
+        TrackingInitialized = false
+    end
 end
 
 function Library:SetChamsEnabled(Value)
     CONFIG.Chams.Enabled = Value == true
+
+    if not CONFIG.Chams.Enabled then
+        for _, Data in pairs(Tracked) do
+            for _, Cham in pairs(Data.Parts) do
+                DestroyCham(Cham)
+            end
+            table.clear(Data.Parts)
+        end
+        DestroyChamLayers()
+        if not ESPActive then
+            TrackingInitialized = false
+        end
+        return
+    end
+
+    EnsureTracking()
+    EnsureChamLayers()
+    for _, Data in pairs(Tracked) do
+        Data.NextPartScan = 0
+    end
 end
 
 function Library:GetConfig()
