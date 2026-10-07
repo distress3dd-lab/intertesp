@@ -647,9 +647,6 @@ local function NewText()
     return Text
 end
 
--- Drawing Text has one Color per object. A real text gradient therefore
--- needs the label split into character objects, with one interpolated color
--- per character.
 local function NewLabel()
 
     return {
@@ -1279,8 +1276,6 @@ local function RemovePlayer(
     Player
 )
 
-    -- Player is actually leaving, so remove both
-    -- the current character and the Player connections.
     RemoveCharacter(
         Player
     )
@@ -1299,8 +1294,6 @@ local function TrackCharacter(
         return
     end
 
-    -- Remove only the old character. Keep CharacterAdded
-    -- connected so ESP/chams return after respawn.
     RemoveCharacter(
         Player
     )
@@ -1327,12 +1320,9 @@ local function TrackCharacter(
     Tracked[Player] =
         Data
 
-    -- Chams and Drawing objects are allocated lazily by the renderer.
-    -- This avoids a large synchronous allocation burst when the library loads.
+
     Data.NextPartScan = 0
 
-    -- Remove ESP/chams immediately when this character dies,
-    -- while keeping CharacterAdded alive for the next respawn.
     local Humanoid =
         Character:FindFirstChildOfClass(
             "Humanoid"
@@ -1349,8 +1339,7 @@ local function TrackCharacter(
                     local Current =
                         Tracked[Player]
 
-                    -- An old character must never remove
-                    -- ESP belonging to a newer character.
+
                     if Current
                         and Current.Character == Character then
 
@@ -2392,8 +2381,6 @@ local function EnsureTracking()
 
     TrackingInitialized = true
 
-    -- Only connect players that are not already tracked. This matters after
-    -- both features are disabled and a new player joins while tracking is off.
     for _, Player in ipairs(Players:GetPlayers()) do
         if Player ~= LocalPlayer and not CharacterConnections[Player] then
             TrackPlayer(Player)
@@ -2470,8 +2457,6 @@ local function UpdateESP()
         ChamGui.Enabled = false
     end
 
-    -- Keep allocations bounded. ESP objects are created a few players at a time,
-    -- while cham parts are created incrementally, rather than for the whole lobby.
     local EspCreateBudget = 3
     local ChamCreateBudget = 8
 
