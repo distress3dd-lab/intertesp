@@ -136,7 +136,7 @@ local CONFIG = {
 
             Thickness = 1.5,
 
-            GradientSegments = 4,
+            GradientSegments = 16,
 
             CornerWidth = 0.28,
             CornerHeight = 0.22,
@@ -336,7 +336,7 @@ local CONFIG = {
 
             Color = {
 
-                Mode = "Solid",
+                Mode = "Gradient",
 
                 Solid =
                     Color3.fromRGB(
@@ -378,13 +378,13 @@ local CONFIG = {
 
                 X = 0,
 
-                Y = 19,
+                Y = 20,
             },
         },
 
         Holding = {
 
-            Enabled = false,
+            Enabled = true,
 
             Size = 12,
 
@@ -392,7 +392,7 @@ local CONFIG = {
 
             Color = {
 
-                Mode = "Solid",
+                Mode = "Gradient",
 
                 Solid =
                     Color3.fromRGB(
@@ -434,7 +434,7 @@ local CONFIG = {
 
                 X = 0,
 
-                Y = 33,
+                Y = 37,
             },
         },
 
@@ -446,7 +446,7 @@ local CONFIG = {
 
             Offset = 6,
 
-            Segments = 4,
+            Segments = 16,
 
             Color = {
 
@@ -645,6 +645,70 @@ local function NewText()
     Text.Size = 13
     Text.Font = 2
     return Text
+end
+
+-- Drawing Text has one Color per object. A real text gradient therefore
+-- needs the label split into character objects, with one interpolated color
+-- per character.
+local function NewLabel()
+
+    return {
+        Characters = {},
+        Text = "",
+    }
+end
+
+local function EnsureLabelCharacters(Label, Count)
+
+    for Index = 1, Count do
+        if not Label.Characters[Index] then
+            Label.Characters[Index] = NewText()
+        end
+    end
+
+    for Index = Count + 1, #Label.Characters do
+        Label.Characters[Index].Visible = false
+    end
+end
+
+local function HideLabel(Label)
+
+    if not Label then
+        return
+    end
+
+    for _, Character in ipairs(Label.Characters) do
+        Character.Visible = false
+    end
+
+    Label.Text = ""
+end
+
+local function GetCharacterWidth(Character)
+
+    local Success, Bounds =
+        pcall(function()
+            return Character.TextBounds
+        end)
+
+    if Success and Bounds and Bounds.X > 0 then
+        return Bounds.X
+    end
+
+    return Character.Size * 0.6
+end
+
+local function GetLabelWidth(Label)
+
+    local Width = 0
+
+    for _, Character in ipairs(Label.Characters) do
+        if Character.Visible and Character.Text ~= "" then
+            Width += GetCharacterWidth(Character)
+        end
+    end
+
+    return Width
 end
 
 local ChamGui = nil
@@ -1063,16 +1127,16 @@ local function CreateESP()
         },
 
         Name =
-            NewText(),
+            NewLabel(),
 
         Visibility =
-            NewText(),
+            NewLabel(),
 
         Distance =
-            NewText(),
+            NewLabel(),
 
         Holding =
-            NewText(),
+            NewLabel(),
 
         HealthOutline =
             NewLine(),
@@ -1113,13 +1177,13 @@ local function HideESP(
         HideEdge(Edge)
     end
 
-    ESP.Name.Visible = false
+    HideLabel(ESP.Name)
 
-    ESP.Visibility.Visible = false
+    HideLabel(ESP.Visibility)
 
-    ESP.Distance.Visible = false
+    HideLabel(ESP.Distance)
 
-    ESP.Holding.Visible = false
+    HideLabel(ESP.Holding)
 
     ESP.HealthOutline.Visible = false
 
@@ -1381,9 +1445,6 @@ local function GetScreenBounds(
         return nil
     end
 
-    -- Project the eight corners of the model bounding box instead of every
-    -- corner of every limb. This reduces a typical R15 character from roughly
-    -- 120+ WorldToViewportPoint calls to 8.
     local CF, Size = Character:GetBoundingBox()
     local Half = Size * 0.5
 
@@ -1395,9 +1456,15 @@ local function GetScreenBounds(
         for Y = -1, 1, 2 do
             for Z = -1, 1, 2 do
                 local WorldCorner = CF:PointToWorldSpace(
-                    Vector3.new(Half.X * X, Half.Y * Y, Half.Z * Z)
+                    Vector3.new(
+                        Half.X * X,
+                        Half.Y * Y,
+                        Half.Z * Z
+                    )
                 )
+
                 local Point = Camera:WorldToViewportPoint(WorldCorner)
+
                 if Point.Z > 0 then
                     Found = true
                     MinX = math.min(MinX, Point.X)
@@ -1415,7 +1482,8 @@ local function GetScreenBounds(
 
     local Width = MaxX - MinX
     local Height = MaxY - MinY
-    if Width <= 0 or Height <= 0 then
+
+    if Width <= 1 or Height <= 1 then
         return nil
     end
 
@@ -1770,18 +1838,209 @@ local function SnapPixel(Value)
     return math.floor(Value + 0.5)
 end
 
-local function ApplyTextPlacement(
+local function GetPlacementPosition(
+    Bounds,
+    Placement
+)
+    local Side = Placement.Side or "Bottom"
+
+    local X = tonumber(Placement.X) or 0
+    local Y = tonumber(Placement.Y) or 0
+
+    local CenterX = Bounds.CenterX or ((Bounds.Left + Bounds.Right) * 0.5)
+    local CenterY = Bounds.CenterY or ((Bounds.Top + Bounds.Bottom) * 0.5)
+
+    if Side == "Top" then
+        return Vector2.new(CenterX + X, Bounds.Top + Y)
+    elseif Side == "Bottom" then
+        return Vector2.new(CenterX + X, Bounds.Bottom + Y)
+    elseif Side == "Left" then
+        return Vector2.new(Bounds.Left + X, CenterY + Y)
+    elseif Side == "Right" then
+        return Vector2.new(Bounds.Right + X, CenterY + Y)
+    else
+        return Vector2.new(CenterX + X, CenterY + Y)
+    end
+end
+
+local function GetTextGradientT(Index, Count)
+
+    if Count <= 1 then
+        return 0.5
+    end
+
+    return (Index - 1) / (Count - 1)
+end
+
+local function ConfigureLabel(
+    Label,
     Text,
+    Size,
+    ColorSetting,
+    Outline
+)
+    Text = tostring(Text or "")
+    Size = math.max(1, math.floor((tonumber(Size) or 13) + 0.5))
+
+    if Text == "" then
+        HideLabel(Label)
+        return false
+    end
+
+    local Characters = {}
+
+    for _, Codepoint in utf8.codes(Text) do
+        Characters[#Characters + 1] = utf8.char(Codepoint)
+
+        if #Characters >= 64 then
+            break
+        end
+    end
+
+    if #Characters == 0 then
+        HideLabel(Label)
+        return false
+    end
+
+    Text = table.concat(Characters)
+
+    EnsureLabelCharacters(Label, #Characters)
+
+    local Count = #Characters
+
+    for Index = 1, Count do
+        local Character = Label.Characters[Index]
+
+        Character.Text = Characters[Index]
+        Character.Size = Size
+        Character.Font = 2
+        Character.Center = false
+        Character.Outline = Outline.Enabled == true
+        Character.OutlineColor = Outline.Color
+        Character.Color = ResolveColor(
+            ColorSetting,
+            GetTextGradientT(Index, Count)
+        )
+        Character.Transparency = 1
+        Character.Visible = true
+    end
+
+    Label.Text = Text
+
+    return true
+end
+
+local function ApplyLabelPlacement(
+    Label,
     Bounds,
     Placement
 )
     local Position = GetPlacementPosition(Bounds, Placement)
+    local Width = GetLabelWidth(Label)
 
-    Text.Center = true
-    Text.Position = Vector2.new(
-        SnapPixel(Position.X),
+    local CursorX =
+        SnapPixel(Position.X - (Width * 0.5))
+
+    local Y =
         SnapPixel(Position.Y)
-    )
+
+    for _, Character in ipairs(Label.Characters) do
+        if Character.Visible and Character.Text ~= "" then
+            local CharacterWidth = GetCharacterWidth(Character)
+
+            Character.Position = Vector2.new(
+                SnapPixel(CursorX),
+                Y
+            )
+
+            CursorX += CharacterWidth
+        end
+    end
+end
+
+local function GetLabelHeight(Label, DefaultSize)
+
+    for _, Character in ipairs(Label.Characters) do
+        if Character.Visible then
+            local Success, Bounds =
+                pcall(function()
+                    return Character.TextBounds
+                end)
+
+            if Success and Bounds and Bounds.Y > 0 then
+                return Bounds.Y
+            end
+
+            return tonumber(DefaultSize) or 13
+        end
+    end
+
+    return tonumber(DefaultSize) or 13
+end
+
+local function ApplyStackedLabelPlacements(
+    ESP,
+    Bounds
+)
+    local BottomY = Bounds.Bottom
+
+    local Labels = {
+        {
+            Label = ESP.Visibility,
+            Setting = CONFIG.ESP.Visibility,
+            Enabled = CONFIG.ESP.Visibility.Enabled,
+            Size = CONFIG.ESP.Visibility.Size,
+        },
+        {
+            Label = ESP.Distance,
+            Setting = CONFIG.ESP.Distance,
+            Enabled = CONFIG.ESP.Distance.Enabled,
+            Size = CONFIG.ESP.Distance.Size,
+        },
+        {
+            Label = ESP.Holding,
+            Setting = CONFIG.ESP.Holding,
+            Enabled = CONFIG.ESP.Holding.Enabled,
+            Size = CONFIG.ESP.Holding.Size,
+        },
+    }
+
+    for _, Entry in ipairs(Labels) do
+        if Entry.Enabled and Entry.Label.Text ~= "" then
+            local Placement = Entry.Setting.Placement
+            local Side = Placement.Side or "Bottom"
+
+            if Side == "Bottom" then
+                local PositionY =
+                    BottomY
+                    + (tonumber(Placement.Y) or 0)
+
+                ApplyLabelPlacement(
+                    Entry.Label,
+                    Bounds,
+                    {
+                        Side = "Bottom",
+                        X = tonumber(Placement.X) or 0,
+                        Y = PositionY - Bounds.Bottom,
+                    }
+                )
+
+                BottomY =
+                    PositionY
+                    + math.max(
+                        GetLabelHeight(Entry.Label, Entry.Size),
+                        Entry.Size
+                    )
+                    + 2
+            else
+                ApplyLabelPlacement(
+                    Entry.Label,
+                    Bounds,
+                    Placement
+                )
+            end
+        end
+    end
 end
 
 local function HideHealth(
@@ -1973,26 +2232,6 @@ local function DrawHealth(
     end
 end
 
-local function ConfigureText(
-    Object,
-    Text,
-    Size,
-    ColorSetting,
-    Outline,
-    Bounds
-)
-    Object.Text = tostring(Text or "")
-
-    Object.Size = math.floor((tonumber(Size) or 13) + 0.5)
-
-    Object.Center = true
-    Object.Color = ResolveColor(ColorSetting, 0.5)
-    Object.Outline = Outline.Enabled == true
-    Object.OutlineColor = Outline.Color
-    Object.Transparency = 1
-    Object.Visible = true
-end
-
 local function DrawDistance(
     ESP,
     Character,
@@ -2004,8 +2243,7 @@ local function DrawDistance(
 
     if not Setting.Enabled then
 
-        ESP.Distance.Visible =
-            false
+        HideLabel(ESP.Distance)
 
         return
     end
@@ -2029,8 +2267,7 @@ local function DrawDistance(
     if not TargetRoot
         or not LocalRoot then
 
-        ESP.Distance.Visible =
-            false
+        HideLabel(ESP.Distance)
 
         return
     end
@@ -2066,7 +2303,7 @@ local function DrawDistance(
             + 0.5
         ) / Power
 
-    ConfigureText(
+    if not ConfigureLabel(
 
         ESP.Distance,
 
@@ -2083,16 +2320,10 @@ local function DrawDistance(
 
         Setting.Color,
 
-        Setting.Outline,
-
-        Bounds
-    )
-
-    ApplyTextPlacement(
-        ESP.Distance,
-        Bounds,
-        Setting.Placement
-    )
+        Setting.Outline
+    ) then
+        return
+    end
 end
 
 local function DrawHolding(
@@ -2106,8 +2337,7 @@ local function DrawHolding(
 
     if not Setting.Enabled then
 
-        ESP.Holding.Visible =
-            false
+        HideLabel(ESP.Holding)
 
         return
     end
@@ -2126,13 +2356,12 @@ local function DrawHolding(
     if not Text
         or Text == "" then
 
-        ESP.Holding.Visible =
-            false
+        HideLabel(ESP.Holding)
 
         return
     end
 
-    ConfigureText(
+    if not ConfigureLabel(
 
         ESP.Holding,
 
@@ -2142,16 +2371,10 @@ local function DrawHolding(
 
         Setting.Color,
 
-        Setting.Outline,
-
-        Bounds
-    )
-
-    ApplyTextPlacement(
-        ESP.Holding,
-        Bounds,
-        Setting.Placement
-    )
+        Setting.Outline
+    ) then
+        return
+    end
 end
 
 local function EnsureTracking()
@@ -2371,38 +2594,46 @@ local function UpdateESP()
         end
 
         if CONFIG.ESP.Name.Enabled then
-            ConfigureText(
+            local NameText =
+                Player.DisplayName
+                and Player.DisplayName ~= ""
+                and Player.DisplayName
+                or Player.Name
+
+            if ConfigureLabel(
                 ESP.Name,
-                Player.DisplayName,
+                NameText,
                 CONFIG.ESP.Name.Size,
                 CONFIG.ESP.Name.Color,
-                CONFIG.ESP.Name.Outline,
-                Bounds
-            )
-            ApplyTextPlacement(ESP.Name, Bounds, CONFIG.ESP.Name.Placement)
+                CONFIG.ESP.Name.Outline
+            ) then
+                ApplyLabelPlacement(
+                    ESP.Name,
+                    Bounds,
+                    CONFIG.ESP.Name.Placement
+                )
+            end
         else
-            ESP.Name.Visible = false
+            HideLabel(ESP.Name)
         end
 
         if CONFIG.ESP.Visibility.Enabled then
             local Visible = IsVisible(Character, Camera)
 
-            ConfigureText(
+            ConfigureLabel(
                 ESP.Visibility,
                 Visible and CONFIG.ESP.Visibility.VisibleText or CONFIG.ESP.Visibility.HiddenText,
                 CONFIG.ESP.Visibility.Size,
                 Visible and CONFIG.ESP.Visibility.VisibleColor or CONFIG.ESP.Visibility.HiddenColor,
-                CONFIG.ESP.Visibility.Outline,
-                Bounds
+                CONFIG.ESP.Visibility.Outline
             )
-
-            ApplyTextPlacement(ESP.Visibility, Bounds, CONFIG.ESP.Visibility.Placement)
         else
-            ESP.Visibility.Visible = false
+            HideLabel(ESP.Visibility)
         end
 
         DrawDistance(ESP, Character, Bounds)
         DrawHolding(ESP, Character, Bounds)
+        ApplyStackedLabelPlacements(ESP, Bounds)
 
         local Humanoid = Character:FindFirstChildOfClass("Humanoid")
         DrawHealth(ESP, Bounds, Humanoid)
